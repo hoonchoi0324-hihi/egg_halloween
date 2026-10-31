@@ -86,6 +86,7 @@ body.duo #tg0{right:auto;left:max(16px,env(safe-area-inset-left,0px));bottom:aut
 .credit{font-size:14px;letter-spacing:.2em;color:var(--dim);margin:0}
 .end{font-family:var(--f-title);font-size:clamp(56px,13vw,96px);color:var(--pump);margin:0;line-height:1}
 .stat{font-variant-numeric:tabular-nums;color:var(--dim);font-size:14px;margin:0;max-width:36ch;text-wrap:balance}
+.btn.big{font-size:20px;padding:14px 34px;box-shadow:0 0 18px rgba(255,138,42,.35)}
 .box{display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:360px}
 #codeIn{font-family:var(--f-body);font-size:22px;letter-spacing:.3em;text-transform:uppercase;text-align:center;width:150px;max-width:100%;
   background:rgba(11,8,16,.7);color:var(--ink);border:2px solid #5a4f63;border-radius:3px;padding:10px 8px}
@@ -137,9 +138,10 @@ body.duo #tg0{right:auto;left:max(16px,env(safe-area-inset-left,0px));bottom:aut
   <div class="box" id="onRoom" hidden>
     <p class="stat">방 코드를 친구에게 알려 줘</p>
     <p class="code" id="codeShow"></p>
-    <ul id="plist"></ul>
-    <button class="btn" id="netStart" hidden>시작하기</button>
+    <p class="stat" id="roleMsg"></p>
+    <button class="btn big" id="netStart" hidden>게임 시작하기</button>
     <p class="stat" id="waitMsg" hidden>방장이 시작하기를 기다리는 중</p>
+    <ul id="plist"></ul>
   </div>
   <p class="stat" id="onStatus"></p>
   <button class="btn ghost" id="onBack">나가기</button>
@@ -449,13 +451,16 @@ async function enterRoom(code,host){if(!roomNS){onStatus('온라인 연결이 �
   try{const r=await roomNS.join('hh-'+code.toLowerCase());
     net={r,code,host,ep:0,ph:'lobby',c:host?0:-1,pk:0,esc:0,help:null,hs:{},lastHit:0,lostT:0,sendT:0,myPeer:null,joinT:0,lastSeen:{}};
     if(host)r.presence({host:1,ph:'lobby',ep:0,c:0});else r.presence({c:-1});
-    $('onStart').hidden=true;$('onRoom').hidden=false;$('codeShow').textContent=code;$('netStart').hidden=!host;$('waitMsg').hidden=host;onStatus('');
+    $('onStart').hidden=true;$('onRoom').hidden=false;$('codeShow').textContent=code;setRole();onStatus('');
   }catch(e){onStatus(e&&e.code==='not_permitted'?'이 계정으로는 온라인 방을 쓸 수 없어.':'방에 들어가지 못했어. 다시 해 볼래?');}
   finally{$('mk').disabled=$('jn').disabled=false;}}
 $('mk').onclick=()=>{let c='';for(let i=0;i<4;i++)c+=CODE_CH[Math.random()*CODE_CH.length|0];enterRoom(c,true);};
 $('jn').onclick=()=>{const c=$('codeIn').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(c.length!==4){onStatus('방 코드 4글자를 입력해 줘.');return;}enterRoom(c,false);};
 $('onBack').onclick=toHome;
 $('netStart').onclick=()=>{if(net&&net.host)netBegin(net.ep+1);};
+function setRole(){if(!net)return;$('netStart').hidden=!net.host;$('waitMsg').hidden=net.host;
+  $('roleMsg').textContent=net.host?'너는 방장이야. 친구가 다 들어오면 아래 버튼을 눌러.':'너는 친구로 들어왔어.';}
+function becomeHost(){net.host=true;net.c=net.c<0?0:net.c;net.r.presence({host:1,ph:'lobby',ep:net.ep,c:net.c}).catch(()=>{});setRole();toast('방장이 없어서 네가 방장이 됐어.');}
 function netBegin(ep){net.ep=ep;net.ph='play';net.hs={};mode='net';document.body.classList.remove('duo');reset();sendPresence(true);hideAll();resize();
   playSlides(intro(),beginPlay);}
 function guestBegin(ep){net.ep=ep;net.lastHit=0;net.pk=0;net.esc=0;net.lastSeen={};mode='net';document.body.classList.remove('duo');reset();hideAll();resize();
@@ -482,7 +487,9 @@ function netTick(dt){
   }else{
     const hp=hostPeer(ps);
     if(!hp){net.lostT+=dt;if(net.lostT>5&&state!=='lobby'&&state!=='title'){toast('방장이 나갔어. 방이 닫혔어.');toHome();return;}
-      if(state==='lobby')$('waitMsg').textContent=net.lostT>4?'이 코드로 열린 방을 찾고 있어… 코드가 맞는지 확인해 줘.':'방장이 시작하기를 기다리는 중';}
+      if(state==='lobby'){const others=ps.filter(p=>!p.sameTab&&p.presence);
+        if(net.lostT>4&&others.length&&net.c>=0&&others.every(p=>p.peer>net.myPeer)){becomeHost();return;}
+        $('waitMsg').textContent=net.lostT>4?(others.length?'방장을 찾는 중…':'이 코드로 열린 방을 찾고 있어… 코드가 맞는지 확인해 줘.'):'방장이 시작하기를 기다리는 중';}}
     else{net.lostT=0;const h=hp.presence;if(state==='lobby')$('waitMsg').textContent='방장이 시작하기를 기다리는 중';
       if(net.c>=0&&h.ph==='play'&&h.ep!==net.ep)guestBegin(h.ep);
       else if(h.ep===net.ep&&mode==='net'){
